@@ -130,7 +130,7 @@ async def get_arrivals(stopId: str):
         async with httpx.AsyncClient(timeout=5.0) as client:
             response = await client.get(api_url, headers={
                 "Accept": "application/json",
-                "Authorization": "api_key"
+                "Authorization": "${{ SWIFTLY }}"
             })
             response.raise_for_status()
             return BusPredictionResponse.model_validate(response.json())
