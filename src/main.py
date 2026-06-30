@@ -2,10 +2,12 @@ from fastapi import FastAPI, Form
 from fastapi.responses import Response
 import httpx
 from dataclasses import dataclass, field
-from typing import Any
 from datetime import datetime, timedelta
 from twilio.twiml.messaging_response import MessagingResponse
 from twilio.request_validator import RequestValidator
+from typing import Generic, TypeVar, List, Optional
+from pydantic import BaseModel
+
 
 # Note to self, when sending an API, Content Type headers is usually for POST/PUT
 
@@ -68,32 +70,79 @@ def add_queue(phn: str):
 def read_root():
     return {"Hello": "world"}
 
+from typing import List, Optional
+from datetime import datetime
+from pydantic import BaseModel
+
+class SMSResponse(BaseModel):
+    status_code: int
+    message: str
+
+class Predictions(BaseModel):
+    time: datetime
+    sec: int
+
+    @property
+    def minutes_remaining(self) -> float:
+        return self.sec / 60
+
+    @property
+    def is_due(self) -> bool:
+        return self.sec <= 0
+
+class Destinations(BaseModel):
+    directionId: str  # 0 - W
+    headsign: str
+    predictions: Optional[List[Predictions]] = None
+
+class RoutePrediction(BaseModel):
+    routeShortName: str
+    stopName: str
+    destinations: List[Destinations]
+
+class PredictionsData(BaseModel):
+    predictionsData: List[RoutePrediction]
+
+class BusPredictionResponse(BaseModel):
+    data: PredictionsData
+
+def validate_destination_response(routePredictions: List[RoutePrediction]) -> SMSResponse:
+    if not routePredictions:
+        return SMSResponse(status_code=200, message="No arrival data available")
+
+    lines = []
+    for route in routePredictions:
+        for dest in route.destinations:
+            if not dest.predictions:
+                lines.append(f"{route.routeShortName} {dest.headsign}: no predictions available")
+                continue
+            for pred in dest.predictions:
+                label = "Due" if pred.is_due else f"{pred.minutes_remaining:.0f} min"
+                lines.append(f"{route.routeShortName} {dest.headsign}: {label}")
+
+    return SMSResponse(status_code=200, message="\n".join(lines))
+
 @app.post("/sms")
 async def sms(Body: str = Form(...), From: str = Form(...)):
     phone_number = From.strip()
     if is_user_limited(phone_number):
-        return {"RateLimitExceeded": "Try again in one minute"}
-    else:
-        add_queue(phone_number)
+        return {"error": "RateLimitExceeded", "message": "Try again in one minute"}
 
-
+    add_queue(phone_number)
     parts = Body.strip().upper().split()
 
     if len(parts) < 2:
-        print("Keyword or stopId missing")
-    else:
-        keyword, stopId = parts[0], parts[1]
-        if keyword != 'LACMTA' or not stopId.isnumeric():
-            print("Keyword or stopId missing")
-    
-    try:
-        reply = await get_arrivals(stopId)
-        if reply == "good":
-            print("You're good to go")
-    except:
-        print("An error occured")
+        return SMSResponse(status_code=400, message="Keyword or stop ID missing")
 
-    return {"keyword": keyword, "stopId": stopId}
+    keyword, stop_id = parts[0], parts[1]
+    if keyword != "LACMTA" or not stop_id.isnumeric():
+        return SMSResponse(status_code=400, message="Invalid keyword or stop ID")
+
+    reply = await get_arrivals(stop_id)
+    if reply is None or reply.data is None:
+        return SMSResponse(status_code=502, message="Unable to fetch arrival data")
+
+    return validate_destination_response(reply.data.predictionsData)
 
 # also handle those empty responses (i.e. no bus routes)
 async def get_arrivals(stopId: str):
@@ -103,17 +152,16 @@ async def get_arrivals(stopId: str):
         async with httpx.AsyncClient(timeout=5.0) as client:
             response = await client.get(api_url, headers={
                 "Accept": "application/json",
-                "Authorization": "authorization_key"
+                "Authorization": "api_key"
             })
             response.raise_for_status()
-            print(response.status_code)
             data = response.json()
             print(data)
+            return BusPredictionResponse.model_validate(response.json())
             # form PredictionResponse here
-            return "good"
     except httpx.HTTPStatusError as e:
-        print("bad status code")
+        print(f"bad status code: {e.response.status_code} - {e.response.text}")
     except httpx.RequestError as e:
-        print("handled connection errors or timeouts etc.")
+        print(f"connection error or timeout: {e}")
     except Exception as e:
-        print("an unexpectted error")
+        print(f"unexpected error: {type(e).__name__}: {e}")
