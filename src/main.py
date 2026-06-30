@@ -122,6 +122,26 @@ def validate_destination_response(routePredictions: List[RoutePrediction]) -> SM
 
     return SMSResponse(status_code=200, message="\n".join(lines))
 
+# also handle those empty responses (i.e. no bus routes)
+async def get_arrivals(stopId: str):
+    stop = int(stopId)
+    api_url = f"https://api.goswift.ly/real-time/lametro/predictions?stop={stop}&number=2"
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            response = await client.get(api_url, headers={
+                "Accept": "application/json",
+                "Authorization": "api_key"
+            })
+            response.raise_for_status()
+            return BusPredictionResponse.model_validate(response.json())
+            # form PredictionResponse here
+    except httpx.HTTPStatusError as e:
+        print(f"bad status code: {e.response.status_code} - {e.response.text}")
+    except httpx.RequestError as e:
+        print(f"connection error or timeout: {e}")
+    except Exception as e:
+        print(f"unexpected error: {type(e).__name__}: {e}")
+
 @app.post("/sms")
 async def sms(Body: str = Form(...), From: str = Form(...)):
     phone_number = From.strip()
@@ -143,25 +163,3 @@ async def sms(Body: str = Form(...), From: str = Form(...)):
         return SMSResponse(status_code=502, message="Unable to fetch arrival data")
 
     return validate_destination_response(reply.data.predictionsData)
-
-# also handle those empty responses (i.e. no bus routes)
-async def get_arrivals(stopId: str):
-    stop = int(stopId)
-    api_url = f"https://api.goswift.ly/real-time/lametro/predictions?stop={stop}&number=2"
-    try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            response = await client.get(api_url, headers={
-                "Accept": "application/json",
-                "Authorization": "api_key"
-            })
-            response.raise_for_status()
-            data = response.json()
-            print(data)
-            return BusPredictionResponse.model_validate(response.json())
-            # form PredictionResponse here
-    except httpx.HTTPStatusError as e:
-        print(f"bad status code: {e.response.status_code} - {e.response.text}")
-    except httpx.RequestError as e:
-        print(f"connection error or timeout: {e}")
-    except Exception as e:
-        print(f"unexpected error: {type(e).__name__}: {e}")
