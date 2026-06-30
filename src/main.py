@@ -1,12 +1,15 @@
 from fastapi import FastAPI, Form
 from fastapi.responses import Response
 import httpx
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from twilio.twiml.messaging_response import MessagingResponse
 from twilio.request_validator import RequestValidator
-from typing import Generic, TypeVar, List, Optional
+from typing import List, Optional
 from pydantic import BaseModel
+import os
+
+SWIFTLY_API = os.environ["SWIFTLY_API"]
 
 
 # Note to self, when sending an API, Content Type headers is usually for POST/PUT
@@ -130,7 +133,7 @@ async def get_arrivals(stopId: str):
         async with httpx.AsyncClient(timeout=5.0) as client:
             response = await client.get(api_url, headers={
                 "Accept": "application/json",
-                "Authorization": "${{ SWIFTLY }}"
+                "Authorization": "${{ SWIFTLY_API }}"
             })
             response.raise_for_status()
             return BusPredictionResponse.model_validate(response.json())
