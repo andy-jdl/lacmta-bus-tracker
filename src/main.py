@@ -11,32 +11,13 @@ import os
 
 SWIFTLY_API = os.environ["SWIFTLY_API"]
 
-
-# Note to self, when sending an API, Content Type headers is usually for POST/PUT
-
-# TODO API Key
-# store your API key securly
-
 app = FastAPI()
-
-# TODO Build validator
-# Also, free tier of ngrok has dynamic IP address.
-# Make sure you change the URL in your dashboard when starting your server again [x]
-# You need to register A2Auth for your phone number to send messages. Let's wait until you get API access [x]
-
-@app.post("/hook")
-async def chat(From: str = Form(...), Body: str = Form(...)):
-    response = MessagingResponse()
-    # msg = response.message(f"Hi {From}, you said: {Body}")
-    return Response(content=str(response), media_type="application/xml")
 
 @dataclass(order=True)
 class UserPriority:
     phone_number: str
     counter: int
     last_updated: datetime
-
-# For Development purposes
 
 q = {}
 
@@ -62,12 +43,6 @@ def add_queue(phn: str):
         user.counter += 1
     
     user.last_updated = now
-# For Development purposes
-
-
-# TODO [x] Twillio setup, [x] Metro API setup
-
-# Twilio webhook
 
 @app.get("/")
 def read_root():
