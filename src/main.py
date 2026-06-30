@@ -1,11 +1,11 @@
 from fastapi import FastAPI, Form
-from fastapi.responses import Response
 import httpx
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from twilio.twiml.messaging_response import MessagingResponse
-from twilio.request_validator import RequestValidator
 from typing import List, Optional
+from pydantic import BaseModel
+from typing import List, Optional
+from datetime import datetime
 from pydantic import BaseModel
 import os
 
@@ -47,10 +47,6 @@ def add_queue(phn: str):
 @app.get("/")
 def read_root():
     return {"Hello": "world"}
-
-from typing import List, Optional
-from datetime import datetime
-from pydantic import BaseModel
 
 class SMSResponse(BaseModel):
     status_code: int
